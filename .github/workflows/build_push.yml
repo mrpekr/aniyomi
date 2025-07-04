@@ -41,13 +41,17 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testReleaseUnitTest
 
-      - name: Upload unsigned APKs
+      - name: Upload APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: unsigned-apks-${{ github.sha }}
-          path: |
-            app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
-            app/build/outputs/apk/release/app-universal-release-unsigned.apk
+          name: arm64-v8a-${{ github.sha }}
+          path: app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
+
+      - name: Upload Universal APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: universal-${{ github.sha }}
+          path: app/build/outputs/apk/release/app-universal-release-unsigned.apk
 
       - name: Upload mapping
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -55,13 +59,18 @@ jobs:
           name: mapping-${{ github.sha }}
           path: app/build/outputs/mapping/release
 
-      # Tag-based release logic
-      - name: Get tag name
-        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'aniyomiorg/aniyomi'
-        run: echo "VERSION_TAG=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+      # Sign APKs for all pushes (not just tags)
+      - name: Set version tag fallback
+        if: github.repository == 'aniyomiorg/aniyomi'
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "VERSION_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          else
+            echo "VERSION_TAG=build-${GITHUB_SHA::7}" >> $GITHUB_ENV
+          fi
 
       - name: Sign APK
-        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'aniyomiorg/aniyomi'
+        if: github.repository == 'aniyomiorg/aniyomi'
         uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
         with:
           releaseDirectory: app/build/outputs/apk/release
@@ -73,7 +82,7 @@ jobs:
           BUILD_TOOLS_VERSION: '35.0.1'
 
       - name: Clean up build artifacts
-        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'aniyomiorg/aniyomi'
+        if: github.repository == 'aniyomiorg/aniyomi'
         run: |
           set -e
 
@@ -97,18 +106,7 @@ jobs:
           sha=`sha256sum aniyomi-x86_64-${{ env.VERSION_TAG }}.apk | awk '{ print $1 }'`
           echo "APK_X86_64_SHA=$sha" >> $GITHUB_ENV
 
-      - name: Upload signed APKs
-        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'aniyomiorg/aniyomi'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: signed-apks-${{ env.VERSION_TAG }}
-          path: |
-            aniyomi-${{ env.VERSION_TAG }}.apk
-            aniyomi-arm64-v8a-${{ env.VERSION_TAG }}.apk
-            aniyomi-armeabi-v7a-${{ env.VERSION_TAG }}.apk
-            aniyomi-x86-${{ env.VERSION_TAG }}.apk
-            aniyomi-x86_64-${{ env.VERSION_TAG }}.apk
-
+      # Optional: Create a release only if it's a tag
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') && github.repository == 'aniyomiorg/aniyomi'
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
